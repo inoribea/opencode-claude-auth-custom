@@ -14,9 +14,9 @@ Self-contained Anthropic auth provider for OpenCode — uses Claude Code credent
 | Feature | Upstream | This fork |
 |---|---|---|
 | **Manual API key** | ❌ | ✅ `opencode auth login` → "Manual API Key" |
-| **Custom base URL** | ❌ | ✅ `ANTHROPIC_BASE_URL` env var / agent config |
+| **Custom base URL** | ❌ | ✅ `ANTHROPIC_BASE_URL` env var / opencode.json |
 | **Raw Keychain key** | Only OAuth `-credentials` entries | ✅ Falls back to bare `Claude Code` service |
-| **Agent-level config** | `enable1mContext` only | + `apiKey`, `baseUrl` |
+| **opencode.json config** | `enable1mContext` only | + `apiKey`, `baseUrl` (via provider options) |
 
 ## Quick start
 
@@ -35,20 +35,24 @@ $env:ANTHROPIC_API_KEY = "sk-ant-api03-..."
 $env:ANTHROPIC_BASE_URL = "https://your-proxy.com/v1"  # optional
 ```
 
-### Option C: Agent config
+### Option C: Provider config (opencode.json)
 
 ```json
 {
-  "agent": {
-    "build": {
-      "apiKey": "sk-ant-api03-...",
-      "baseUrl": "https://your-proxy.com/v1"
+  "provider": {
+    "anthropic": {
+      "options": {
+        "apiKey": "sk-ant-api03-...",
+        "baseURL": "https://your-proxy.com/v1"
+      }
     }
   }
 }
 ```
 
-Priority: `opencode auth login` > env var > agent config > Keychain.
+> 也可以写在 `agent.build` 下（如 `"agent": { "build": { "baseUrl": "..." } }`），但作者未测试该方式是否稳定生效，建议使用以上 provider 格式。
+
+Priority: `opencode auth login` > env var > opencode.json > Keychain.
 
 ## Credential sources
 
@@ -66,11 +70,21 @@ Use `ANTHROPIC_BASE_URL` to route requests through a proxy:
 $env:ANTHROPIC_BASE_URL = "https://your-proxy.com/v1"
 ```
 
-Or in agent config:
+Or in `opencode.json`:
 
 ```json
-{ "agent": { "build": { "baseUrl": "https://your-proxy.com/v1" } } }
+{
+  "provider": {
+    "anthropic": {
+      "options": {
+        "baseURL": "https://your-proxy.com/v1"
+      }
+    }
+  }
+}
 ```
+
+> 也可尝试写在 agent 配置下：`"agent": { "build": { "baseUrl": "..." } }`，但作者未测试是否稳定生效。
 
 ## Environment variable overrides
 
@@ -121,7 +135,7 @@ For offline / portable use, copy the `opencode-claude-auth-custom/` folder to `~
 |---|---|
 | "Credentials not found" | Set `ANTHROPIC_API_KEY` or run `opencode auth login` → Manual API Key |
 | `401 Invalid bearer token` | Key stored as `type:"api"` not `type:"oauth"` — clear `auth.json` and re-auth |
-| "undefined/chat/completions" | Check `ANTHROPIC_BASE_URL` or agent `baseUrl` is set |
+| "undefined/chat/completions" | Check `ANTHROPIC_BASE_URL` or `provider.anthropic.options.baseURL` is set |
 | Not working on Linux/Windows | Ensure `~/.claude/.credentials.json` exists, or use manual API key |
 | Keychain access denied | Grant access when macOS prompts you |
 

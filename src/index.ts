@@ -12,7 +12,14 @@ import {
   LONG_CONTEXT_BETAS,
 } from "./betas.ts"
 import { transformBody, transformResponseStream } from "./transforms.ts"
-import { applyOpencodeConfig } from "./plugin-config.ts"
+import { applyOpencodeConfig, getApiKey, getBaseUrl } from "./plugin-config.ts"
+
+interface PluginOptions {
+  apiKey?: string
+  baseUrl?: string
+}
+
+const DEFAULT_BASE_URL = "https://api.anthropic.com/v1"
 import {
   getCachedCredentials,
   getCredentialsForSync,
@@ -217,8 +224,20 @@ export function buildRequestHeaders(
 
 const SYNC_INTERVAL = 5 * 60 * 1000 // 5 minutes
 
-const plugin: Plugin = async () => {
+const plugin: Plugin = async (_input, options?: PluginOptions) => {
   initLogger()
+
+  // Plugin options from tuple form: ["plugin", { apiKey, baseUrl }]
+  // Lower priority: environment variables (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL)
+  const manualApiKey = options?.apiKey ?? getApiKey()
+  const customBaseUrl = options?.baseUrl ?? getBaseUrl()
+  console.log("[claude-auth] options:", { hasOptions: !!options, hasApiKey: !!manualApiKey, hasBaseUrl: !!customBaseUrl })
+  log("plugin_init_options", {
+    hasOptions: !!options,
+    hasApiKey: !!manualApiKey,
+    hasBaseUrl: !!customBaseUrl,
+    optionsKeys: options ? Object.keys(options) : [],
+  })
 
   let accounts: ClaudeAccount[] = []
   try {
@@ -234,6 +253,17 @@ const plugin: Plugin = async () => {
   }
 
   initAccounts(accounts)
+
+  // Manual API key override — sync to auth.json as type:"api" so OpenCode
+  // sends x-api-key header (raw sk-ant keys rejected as Bearer).
+  if (manualApiKey) {
+    syncAuthJson({
+      accessToken: manualApiKey,
+      refreshToken: "",
+      expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
+    })
+    log("plugin_init", { manualApiKey: true, totalAccounts: accounts.length })
+  }
 
   const defaultAccountSource = accounts[0]?.source ?? null
 
@@ -270,11 +300,13 @@ const plugin: Plugin = async () => {
       }
     }, SYNC_INTERVAL)
     syncTimer.unref()
-  } else {
+  } else if (!manualApiKey) {
     log("plugin_init_no_accounts", { reason: "no credentials found" })
     console.warn(
-      "opencode-claude-auth: No Claude Code credentials found. Running in API key mode with transform hook enabled.",
+      "opencode-claude-auth: No Claude Code credentials found. Set ANTHROPIC_API_KEY or add apiKey to opencode.json to use a manual API key.",
     )
+  } else {
+    log("plugin_init_api_key_only", { reason: "using manual API key, no keychain accounts" })
   }
 
   return {
@@ -297,7 +329,26 @@ const plugin: Plugin = async () => {
       provider: "anthropic",
       async loader(getAuth, provider) {
         const auth = await getAuth()
-        log("auth_loader_called", { authType: auth.type })
+        log("auth_loader_called", { authType: auth.type, customBaseUrl: !!customBaseUrl })
+
+        // Raw sk-ant-api03-... console API keys: hand the key back to OpenCode
+        // as apiKey so it sends the standard x-api-key header. Anthropic rejects
+        // these keys sent as Bearer OAuth tokens, so we must NOT route them
+        // through our fetch wrapper. The system prompt transform still applies.
+        if (auth.type === "api" && typeof auth.key === "string" && auth.key.length > 0) {
+          log("auth_loader_pass_through_api_key", { keyPrefix: auth.key.slice(0, 12) })
+          for (const model of Object.values(provider.models)) {
+            model.cost = {
+              input: 0,
+              output: 0,
+              cache: { read: 0, write: 0 },
+            }
+          }
+          return customBaseUrl
+            ? { apiKey: auth.key, baseURL: customBaseUrl }
+            : { apiKey: auth.key }
+        }
+
         if (auth.type !== "oauth") {
           log("auth_loader_skipped", {
             authType: auth.type,
@@ -320,7 +371,7 @@ const plugin: Plugin = async () => {
 
         return {
           apiKey: "",
-          baseURL: "https://api.anthropic.com/v1",
+          baseURL: customBaseUrl ?? "https://api.anthropic.com/v1",
           async fetch(input: RequestInfo | URL, init?: RequestInit) {
             const latest = getCachedCredentials()
             if (!latest) {
@@ -511,7 +562,7 @@ const plugin: Plugin = async () => {
             const latestAccounts = refreshAccountsList()
 
             const source =
-              inputs?.account ?? latestAccounts[0]?.source ?? accounts[0].source
+              inputs?.account ?? latestAccounts[0]?.source ?? accounts[0]?.source
             const chosen =
               latestAccounts.find((a) => a.source === source) ??
               accounts.find((a) => a.source === source) ??
@@ -540,6 +591,47 @@ const plugin: Plugin = async () => {
                   access: creds.accessToken,
                   refresh: creds.refreshToken,
                   expires: creds.expiresAt,
+                }
+              },
+            }
+          },
+        },
+        {
+          type: "oauth" as const,
+          label: "Manual API Key",
+
+          get prompts() {
+            return [
+              {
+                type: "text" as const,
+                key: "key",
+                message: "Paste your Anthropic API key:",
+                placeholder: "sk-ant-api03-... or proxy key",
+              },
+            ]
+          },
+
+          async authorize(inputs) {
+            const key = inputs?.key?.trim()
+            if (!key) {
+              return {
+                url: "",
+                instructions: "API key is required.",
+                method: "auto" as const,
+                async callback() {
+                  return { type: "failed" as const }
+                },
+              }
+            }
+            return {
+              url: "",
+              instructions: "API key registered.",
+              method: "auto" as const,
+              async callback() {
+                return {
+                  type: "success" as const,
+                  provider: "anthropic",
+                  key,
                 }
               },
             }

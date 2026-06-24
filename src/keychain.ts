@@ -18,13 +18,25 @@ export interface ClaudeAccount {
 }
 
 const PRIMARY_SERVICE = "Claude Code-credentials"
+const RAW_KEY_SERVICE = "Claude Code"
+const RAW_KEY_DEFAULT_TTL_MS = 365 * 24 * 60 * 60 * 1000
+
+function parseRawApiKey(raw: string): ClaudeCredentials | null {
+  const trimmed = raw.trim()
+  if (!trimmed.startsWith("sk-ant-")) return null
+  return {
+    accessToken: trimmed,
+    refreshToken: "",
+    expiresAt: Date.now() + RAW_KEY_DEFAULT_TTL_MS,
+  }
+}
 
 function parseCredentials(raw: string): ClaudeCredentials | null {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    return null
+    return parseRawApiKey(raw)
   }
 
   const data = (parsed as { claudeAiOauth?: unknown }).claudeAiOauth ?? parsed
@@ -157,7 +169,24 @@ function listClaudeKeychainServices(): string[] {
       m = re.exec(dump)
     }
 
+    const rawServices: string[] = []
+    const rawSeen = new Set<string>()
+    const rawRe = /"Claude Code"(?!-)/g
+    let rm = rawRe.exec(dump)
+    while (rm !== null) {
+      const svc = rm[0].slice(1, -1)
+      if (!rawSeen.has(svc)) {
+        rawSeen.add(svc)
+        rawServices.push(svc)
+      }
+      rm = rawRe.exec(dump)
+    }
+
     const ordered: string[] = []
+    // Raw key entries take priority — placed first
+    for (const svc of rawServices) {
+      ordered.push(svc)
+    }
     if (seen.has(PRIMARY_SERVICE)) ordered.push(PRIMARY_SERVICE)
     for (const svc of services) {
       if (svc !== PRIMARY_SERVICE) ordered.push(svc)
@@ -287,6 +316,12 @@ export function writeBackCredentials(
   source: string,
   creds: ClaudeCredentials,
 ): boolean {
+  // Raw "Claude Code" keychain entries store bare API keys — don't overwrite them
+  if (source === RAW_KEY_SERVICE) {
+    log("writeback_skipped", { source, reason: "raw key" })
+    return false
+  }
+
   const newCreds = {
     accessToken: creds.accessToken,
     refreshToken: creds.refreshToken,

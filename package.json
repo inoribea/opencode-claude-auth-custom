@@ -1,6 +1,6 @@
 {
   "name": "opencode-claude-auth",
-  "version": "1.5.4",
+  "version": "1.5.4-custom",
   "description": "OpenCode plugin that uses your Claude Code credentials — no separate login needed.",
   "keywords": [
     "anthropic",
@@ -12,7 +12,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/griffinmartin/opencode-claude-auth.git"
+    "url": "git+https://github.com/inoribea/opencode-claude-auth-custom.git"
   },
   "files": [
     "opencode-claude-auth.js",
@@ -50,7 +50,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && cp src/anthropic-prompt.txt dist/",
+    "build": "tsc && node -e \"require('fs').copyFileSync('src/anthropic-prompt.txt','dist/anthropic-prompt.txt')\"",
     "test": "node --test --experimental-strip-types src/**/*.test.ts",
     "test:models": "pnpm run build && node scripts/test-models.ts",
     "intercept": "pnpm run build && node --experimental-strip-types scripts/intercept-claude.ts",

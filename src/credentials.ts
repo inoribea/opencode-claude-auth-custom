@@ -118,11 +118,23 @@ function syncToPath(authPath: string, creds: ClaudeCredentials): void {
       }
     }
   }
-  auth.anthropic = {
-    type: "oauth",
-    access: creds.accessToken,
-    refresh: creds.refreshToken,
-    expires: creds.expiresAt,
+
+  // Raw API keys (no refresh token) must be written as type:"api" so OpenCode
+  // sends them via x-api-key header. Anthropic rejects raw keys sent as
+  // Bearer OAuth tokens (returns 401 Invalid bearer token).
+  const isRawApiKey = !creds.refreshToken
+  if (isRawApiKey) {
+    auth.anthropic = {
+      type: "api",
+      key: creds.accessToken,
+    }
+  } else {
+    auth.anthropic = {
+      type: "oauth",
+      access: creds.accessToken,
+      refresh: creds.refreshToken,
+      expires: creds.expiresAt,
+    }
   }
   const dir = dirname(authPath)
   if (!existsSync(dir)) {

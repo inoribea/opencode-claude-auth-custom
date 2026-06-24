@@ -50,7 +50,7 @@ $env:ANTHROPIC_BASE_URL = "https://your-proxy.com/v1"  # optional
 }
 ```
 
-> 也可以写在 `agent.build` 下（如 `"agent": { "build": { "baseUrl": "..." } }`），但作者未测试该方式是否稳定生效，建议使用以上 provider 格式。
+> It can also be written under `agent.build` (e.g., `"agent": { "build": { "baseUrl": "..." } }`), but the author has not tested whether this method works stably, so it is recommended to use the above provider format.
 
 Priority: `opencode auth login` > env var > opencode.json > Keychain.
 
@@ -84,7 +84,7 @@ Or in `opencode.json`:
 }
 ```
 
-> 也可尝试写在 agent 配置下：`"agent": { "build": { "baseUrl": "..." } }`，但作者未测试是否稳定生效。
+> You can also try writing it under the agent configuration: `"agent": { "build": { "baseUrl": "..." } }`, but the author has not tested whether it works stably.
 
 ## Environment variable overrides
 

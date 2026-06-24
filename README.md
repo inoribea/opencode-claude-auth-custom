@@ -95,11 +95,15 @@ Add to `~/.config/opencode/opencode.json`:
 
 ```json
 {
-  "plugin": ["./plugins/opencode-claude-auth"]
+  "plugin": [
+    "opencode-claude-auth@git+https://github.com/inoribea/opencode-claude-auth-custom.git"
+  ]
 }
 ```
 
-For the portable version, copy the `opencode-claude-auth-custom/` folder to `~/.config/opencode/plugins/opencode-claude-auth/`.
+OpenCode automatically clones and installs the plugin on first run — no manual setup needed.
+
+For offline / portable use, copy the `opencode-claude-auth-custom/` folder to `~/.config/opencode/plugins/opencode-claude-auth/` and reference it as `"./plugins/opencode-claude-auth"`.
 
 ## Supported models
 
